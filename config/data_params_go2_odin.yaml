@@ -17,8 +17,8 @@ scan_frame_id:          sensor
 base_frame_id:          vehicle
 odom_associate_id:      sensor
 
-# Real sensors are not perfectly timestamp aligned.
-time_sync_slop:         0.05
+# Keep depth/registered_scan/odom tightly aligned for TSDF reconstruction.
+time_sync_slop:         0.01
 
 # Default environment folder under iplanner/data/CollectedData.
 env_name:               go2_odin_001

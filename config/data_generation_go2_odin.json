@@ -3,11 +3,18 @@
   "outfolder_name": "TrainingDataGo2Odin",
   "collect_list": "collect_list_go2_odin.txt",
   "voxel_size": 0.05,
-  "robot_size": 0.40,
+  "robot_size": 0.15,
   "image_type": "depth",
+  "cloud_source": "scan",
+  "scan_transform_mode": "world",
+  "max_scan_range": 25.0,
   "map_name": "tsdf1",
   "is_max_iter": true,
   "max_depth_range": 25.0,
   "is_flat_ground": true,
-  "is_visualize": false
+  "is_visualize": false,
+  "save_visualizations": true,
+  "visualization_prefix": "go2_odin_parts",
+  "robot_height": 0.4,
+  "ground_z_offset": -0.4
 }

@@ -56,7 +56,7 @@ class DataCollector:
 
         time_sync_thred = self.__time_sync_slop # second
         rospy.loginfo("data_collect_node ApproximateTimeSynchronizer slop: %.3fs", time_sync_thred)
-        ts = message_filters.ApproximateTimeSynchronizer([image_sub, depth_sub, scan_sub, odom_sub], 50, time_sync_thred)
+        ts = message_filters.ApproximateTimeSynchronizer([image_sub, depth_sub, scan_sub, odom_sub], 10, time_sync_thred)
         ts.registerCallback(self.__syncCallback)
 
         # camera info subscriber
@@ -155,6 +155,21 @@ class DataCollector:
     def __syncCallback(self, image, depth, scan, odom):
         if self.__init_check_dics["odometry_extrinsic"] == 0:
             return
+
+        sync_span = self.__syncSpanSec(image, depth, scan, odom)
+        if sync_span > self.__time_sync_slop + 1e-6:
+            rospy.logwarn_throttle(
+                2.0,
+                "Drop unsynchronized data sample: header span %.4fs exceeds slop %.4fs",
+                sync_span,
+                self.__time_sync_slop)
+            return
+        rospy.loginfo_throttle(
+            10.0,
+            "Accepted data sample header span: %.4fs (slop %.4fs)",
+            sync_span,
+            self.__time_sync_slop)
+
         self.__cv2_img_cam = ros_numpy.numpify(image)
         self.__cv2_img_depth = ros_numpy.numpify(depth)
         self.__updateScanPoints(scan, self.__pcd)
@@ -174,6 +189,16 @@ class DataCollector:
         else:
             self.__odom_list = [pos.x, pos.y, pos.z, ori.x, ori.y, ori.z, ori.w]
         return
+
+
+    def __syncSpanSec(self, image, depth, scan, odom):
+        stamps = [
+            image.header.stamp.to_sec(),
+            depth.header.stamp.to_sec(),
+            scan.header.stamp.to_sec(),
+            odom.header.stamp.to_sec(),
+        ]
+        return max(stamps) - min(stamps)
 
 
     def __saveDepthImage(self, path, image, scale=1000.0):

@@ -15,6 +15,7 @@ import json
 import wandb
 import random
 import argparse
+import cv2
 import torch.optim as optim
 from datetime import datetime
 import torch.nn.functional as F
@@ -28,6 +29,21 @@ from traj_cost import TrajCost
 from traj_viz import TrajViz
 
 torch.set_default_dtype(torch.float32)
+
+
+def load_trusted_checkpoint(path, map_location):
+    """Load legacy iPlanner checkpoints that pickle the full PlannerNet object.
+
+    PyTorch 2.6 changed torch.load's default to weights_only=True.  The
+    upstream iPlanner checkpoints save ``(PlannerNet, best_loss)`` rather than a
+    plain state_dict, so they must be loaded with the legacy pickle path.  Only
+    use this for local checkpoints from a trusted source.
+    """
+    try:
+        return torch.load(path, map_location=map_location, weights_only=False)
+    except TypeError:
+        return torch.load(path, map_location=map_location)
+
 
 class PlannerNetTrainer:
     def __init__(self):
@@ -45,7 +61,10 @@ class PlannerNetTrainer:
         # Convert to string in the format you prefer
         date_time_str = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
         # using Wandb Core
-        wandb.require("core")
+        try:
+            wandb.require("core")
+        except Exception as exc:
+            print("Wandb core mode unavailable; continuing with default wandb mode: {}".format(exc))
         # Initialize wandb
         self.wandb_run = wandb.init(
             # set the wandb project where this run will be logged
@@ -73,8 +92,14 @@ class PlannerNetTrainer:
     def prepare_model(self):
         self.net = PlannerNet(self.args.in_channel, self.args.knodes)
         if self.args.resume == True or not self.args.training:
-            self.net, self.best_loss = torch.load(self.args.model_load, map_location=torch.device("cpu"))
-            print("Resume training from {} with best loss: {}".format(self.args.model_load, self.best_loss))
+            self.net, loaded_best_loss = load_trusted_checkpoint(self.args.model_load, map_location=torch.device("cpu"))
+            if self.args.training and os.path.abspath(self.args.model_load) != os.path.abspath(self.args.model_save):
+                self.best_loss = float('Inf')
+                print("Fine-tune from {} with loaded best loss: {}. Reset current-run best loss for saving to {}.".format(
+                    self.args.model_load, loaded_best_loss, self.args.model_save))
+            else:
+                self.best_loss = loaded_best_loss
+                print("Resume training from {} with best loss: {}".format(self.args.model_load, self.best_loss))
         else:
             self.best_loss = float('Inf')
 
@@ -103,6 +128,7 @@ class PlannerNetTrainer:
         self.val_loader_list   = []
         self.traj_cost_list    = []
         self.traj_viz_list     = []
+        self.eval_env_names    = []
         
         for env_name in tqdm.tqdm(self.env_list):
             if not self.args.training and track_id != test_env_id:
@@ -151,6 +177,7 @@ class PlannerNetTrainer:
 
             self.traj_cost_list.append(traj_cost)
             self.traj_viz_list.append(TrajViz(data_path, map_name=map_name, cameraTilt=camera_tilt))
+            self.eval_env_names.append(env_name)
             track_id += 1
             
         print("Data Loading Completed!")
@@ -238,12 +265,12 @@ class PlannerNetTrainer:
             f.write('\n')
         print(message)
 
-    def evaluate(self, is_visualize=False):
+    def evaluate(self, is_visualize=False, save_images=False, show_images=False):
             self.net.eval()
             test_loss = 0   # Declare and initialize test_loss
             total_batches = 0  # Count total number of batches
             with torch.no_grad():
-                for _, (val_loader, traj_cost, traj_viz) in enumerate(zip(self.val_loader_list, self.traj_cost_list, self.traj_viz_list)):
+                for env_idx, (val_loader, traj_cost, traj_viz) in enumerate(zip(self.val_loader_list, self.traj_cost_list, self.traj_viz_list)):
                     preds_viz = []
                     wp_viz = []
                     for batch_idx, inputs in enumerate(val_loader):
@@ -271,7 +298,7 @@ class PlannerNetTrainer:
                             preds_viz.extend(preds.tolist())
                             wp_viz.extend(waypoints.tolist())
 
-                    if is_visualize:
+                    if is_visualize and len(wp_viz) > 0:
                         max_n = min(len(wp_viz), self.args.visual_number)
                         preds_viz = torch.tensor(preds_viz[:max_n])
                         wp_viz    = torch.tensor(wp_viz[:max_n])
@@ -280,10 +307,30 @@ class PlannerNetTrainer:
                         fear_viz  = fear_viz[:max_n, :].cpu()
                         image_viz = image_viz[:max_n].cpu()
                         # visual trajectory and images
-                        traj_viz.VizTrajectory(preds_viz, wp_viz, odom_viz, goal_viz, fear_viz)
-                        traj_viz.VizImages(preds_viz, wp_viz, odom_viz, goal_viz, fear_viz, image_viz)
+                        if show_images:
+                            traj_viz.VizTrajectory(preds_viz, wp_viz, odom_viz, goal_viz, fear_viz)
+                        result_images = traj_viz.VizImages(preds_viz, wp_viz, odom_viz, goal_viz, fear_viz, image_viz, is_shown=show_images)
+                        if save_images:
+                            env_name = self.eval_env_names[env_idx] if env_idx < len(self.eval_env_names) else "env_%d" % env_idx
+                            self.save_visual_result_images(result_images, env_name)
 
                 return test_loss / total_batches  # Compute mean test_loss
+
+    def save_visual_result_images(self, images, env_name):
+        timestamp = getattr(self, "visual_result_timestamp", None)
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
+            self.visual_result_timestamp = timestamp
+
+        save_root = os.getenv(
+            "IP_VISUAL_SAVE_DIR",
+            os.path.join(self.root_folder, "models", "visualizations"))
+        save_dir = os.path.join(save_root, timestamp, env_name)
+        os.makedirs(save_dir, exist_ok=True)
+
+        for idx, image in enumerate(images):
+            cv2.imwrite(os.path.join(save_dir, "result_%03d.png" % idx), image)
+        print("Saved %d visual result images to %s" % (len(images), save_dir))
 
     def parse_args(self):
         parser = argparse.ArgumentParser(description='Training script for PlannerNet')
@@ -333,7 +380,11 @@ def main():
     trainer = PlannerNetTrainer()
     if trainer.args.training == True:
         trainer.train()
-    trainer.evaluate(is_visualize=True)
+    show_images = os.getenv("IP_FINAL_VISUALIZE", "0") == "1"
+    save_images = os.getenv("IP_SAVE_RESULT_IMAGES", "1") == "1"
+    trainer.evaluate(is_visualize=show_images or save_images,
+                     save_images=save_images,
+                     show_images=show_images)
 
 if __name__ == "__main__":
     main()

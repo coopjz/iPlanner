@@ -14,6 +14,15 @@ import torchvision.transforms as transforms
 
 from iplanner import traj_opt
 
+
+def load_trusted_checkpoint(path, map_location):
+    """Load legacy iPlanner checkpoints that pickle the full PlannerNet object."""
+    try:
+        return torch.load(path, map_location=map_location, weights_only=False)
+    except TypeError:
+        return torch.load(path, map_location=map_location)
+
+
 class IPlannerAlgo:
     def __init__(self, args):
         super(IPlannerAlgo, self).__init__()
@@ -23,7 +32,7 @@ class IPlannerAlgo:
             transforms.Resize(tuple(self.crop_size)),
             transforms.ToTensor()])
 
-        net, _ = torch.load(self.model_save, map_location=torch.device("cpu"))
+        net, _ = load_trusted_checkpoint(self.model_save, map_location=torch.device("cpu"))
         self.net = net.cuda() if torch.cuda.is_available() else net
 
         self.traj_generate = traj_opt.TrajOpt()

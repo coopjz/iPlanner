@@ -2,12 +2,13 @@
     "folder_name": "CollectedData",
     "outfolder_name": "TrainingData",
     "voxel_size": 0.05,
-    "robot_size": 0.3,
+    "robot_size": 0.2,
     "image_type": "depth",
+    "cloud_source": "depth",
     "map_name": "tsdf1",
     "is_max_iter": true,
     "max_depth_range": 10.0,
     "is_flat_ground": true,
+    "save_visualizations": false,
     "is_visualize": false
   }
-  
