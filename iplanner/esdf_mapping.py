@@ -156,17 +156,18 @@ class DataUtils:
         return None
 
 class TSDF_Creator:
-    def __init__(self, input_path, voxel_size, robot_height, robot_size, clear_dist=1.0):
-        self.initialize_path_and_properties(input_path, voxel_size, robot_height, robot_size, clear_dist)
+    def __init__(self, input_path, voxel_size, robot_height, robot_size, clear_dist=1.0, ground_z=0.0):
+        self.initialize_path_and_properties(input_path, voxel_size, robot_height, robot_size, clear_dist, ground_z)
         self.initialize_point_clouds()
 
-    def initialize_path_and_properties(self, input_path, voxel_size, robot_height, robot_size, clear_dist):
+    def initialize_path_and_properties(self, input_path, voxel_size, robot_height, robot_size, clear_dist, ground_z):
         self.input_path = input_path
         self.is_map_ready = False
         self.clear_dist = clear_dist
         self.voxel_size = voxel_size
         self.robot_height = robot_height
         self.robot_size = robot_size
+        self.ground_z = ground_z
 
     def initialize_point_clouds(self):
         self.obs_pcd = o3d.geometry.PointCloud()
@@ -205,6 +206,12 @@ class TSDF_Creator:
         self.is_map_ready = True
         
     def terrain_analysis(self, input_points, ground_height=0.25):
+        print("terrain analysis thresholds: ground_z=%.3f, free=[%.3f, %.3f], obstacle=(%.3f, %.3f)" % (
+            self.ground_z,
+            self.ground_z - ground_height,
+            self.ground_z + ground_height,
+            self.ground_z + ground_height,
+            self.ground_z + self.robot_height * 1.5))
         obs_points, free_points = self._initialize_point_arrays(input_points)
         obs_idx = free_idx = 0
         
@@ -293,10 +300,10 @@ class TSDF_Creator:
         return np.zeros(input_points.shape), np.zeros(input_points.shape)
 
     def _is_obstacle(self, p_height, ground_height):
-        return (p_height > ground_height) and (p_height < self.robot_height * 1.5)
+        return (p_height > self.ground_z + ground_height) and (p_height < self.ground_z + self.robot_height * 1.5)
 
     def _is_free_space(self, p_height, ground_height):
-        return p_height < ground_height and p_height > - ground_height
+        return p_height < self.ground_z + ground_height and p_height > self.ground_z - ground_height
         
     def _handle_no_points(self):
         if (self.obs_points.shape[0] == 0):
@@ -397,4 +404,3 @@ class DepthReconstruction:
         self.cameraR, self.cameraT = DataUtils.read_extrinsic(self.input_path + "/camera_extrinsic.txt")
         
         
-

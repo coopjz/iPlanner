@@ -9,5 +9,7 @@
   "is_max_iter": true,
   "max_depth_range": 25.0,
   "is_flat_ground": true,
-  "is_visualize": false
+  "is_visualize": false,
+  "robot_height": 0.4,
+  "ground_z_offset": -0.4
 }

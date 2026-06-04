@@ -46,6 +46,9 @@ if __name__ == '__main__':
     max_depth_range = parameters.get('max_depth_range', 10.0)
     is_flat_ground = parameters.get('is_flat_ground', True)
     is_visualize = parameters.get('is_visualize', False)
+    robot_height_override = parameters.get('robot_height', None)
+    ground_z_override = parameters.get('ground_z', None)
+    ground_z_offset = parameters.get('ground_z_offset', None)
 
     for env_name in env_list:
         root_path = os.path.join(*[folder_path, env_name])
@@ -59,12 +62,22 @@ if __name__ == '__main__':
         depth_constructor.depth_map_reconstruction(is_flat_ground=is_flat_ground)
         depth_constructor.save_reconstructed_data(image_type=image_type)
         avg_height = depth_constructor.avg_height
+        robot_height = avg_height if robot_height_override is None else robot_height_override
+        if ground_z_override is not None:
+            ground_z = ground_z_override
+        elif ground_z_offset is not None:
+            ground_z = avg_height + ground_z_offset
+        else:
+            ground_z = 0.0
         print("Average Height: ", avg_height)
+        print("TSDF robot height: ", robot_height)
+        print("TSDF ground z: ", ground_z)
         if is_visualize:
             depth_constructor.show_point_cloud()
 
         # Construct the 2D cost map
-        tsdf_creator = TSDF_Creator(out_path, voxel_size=voxel_size, robot_size=robot_size, robot_height=avg_height)
+        tsdf_creator = TSDF_Creator(out_path, voxel_size=voxel_size, robot_size=robot_size,
+                                    robot_height=robot_height, ground_z=ground_z)
         tsdf_creator.read_point_from_file("cloud.ply")
         data, coord, params = tsdf_creator.create_TSDF_map()
         if is_visualize:
