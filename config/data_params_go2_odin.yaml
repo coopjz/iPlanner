@@ -3,7 +3,7 @@ main_freq:              2.5
 
 # Odin/iPlanner runtime topics
 depth_topic:            /odin1/depth_img_competetion
-color_topic:            /odin1/image
+color_topic:            /odin1/image/undistorted
 scan_topic:             /registered_scan
 odom_topic:             /state_estimation
 

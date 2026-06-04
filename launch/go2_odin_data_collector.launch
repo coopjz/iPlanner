@@ -6,10 +6,21 @@
   <arg name="env_name" default="go2_odin_001" />
   <arg name="start_loam_interface" default="false" />
   <arg name="start_camera_info" default="true" />
-  <arg name="odin_calib_file" default="$(env HOME)/dog_nav_stack_demo/odin_ros_driver_main/src/odin_ros_driver/config/calib.yaml" />
+  <arg name="start_static_tf" default="true" />
+  <arg name="sensorOffsetX" default="0.325" />
+  <arg name="sensorOffsetY" default="0" />
+    <arg name="odin_calib_file" default="$(env HOME)/dog_nav_stack_demo/odin_ros_driver_main/src/odin_ros_driver/config/calib.yaml" />
 
   <group if="$(arg start_loam_interface)">
     <include file="$(find loam_interface)/launch/loam_interface_odin.launch" />
+  </group>
+
+  <group if="$(arg start_static_tf)">
+    <!-- Keep data collection frames in the same tree as iPlanner runtime. -->
+    <node pkg="tf" type="static_transform_publisher" name="vehicleTransPublisher"
+          args="-$(arg sensorOffsetX) -$(arg sensorOffsetY) 0 0 0 0 /sensor /vehicle 1000" />
+    <node pkg="tf" type="static_transform_publisher" name="sensorTransPublisher"
+          args="0.00137656 0.02511966 -0.00162311 -1.58066166 0.00707324 -1.57152611 /sensor /camera 1000" />
   </group>
 
   <group if="$(arg start_camera_info)">

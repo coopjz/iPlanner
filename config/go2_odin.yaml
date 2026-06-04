@@ -29,7 +29,7 @@ angular_thred:          0.5
 track_dist:             0.5
 
 # sensor offset retained for compatibility with iPlanner args
-sensor_offset_x:        0.0
+sensor_offset_x:        0.325
 sensor_offset_y:        0.0
 
 # Smart Joystick from Go2 wireless controller via /go2/joy.

@@ -3,8 +3,11 @@
     "data-root": "data",
     "env-id": "training_list_go2_odin.txt",
     "env_type": "TrainingDataGo2Odin",
-    "crop-size": [360, 640],
-    "max-camera-depth": 10.0
+    "crop-size": [
+      360,
+      640
+    ],
+    "max-camera-depth": 25.0
   },
   "modelConfig": {
     "model-load": "models/plannernet.pt",
@@ -17,9 +20,9 @@
   },
   "trainingConfig": {
     "training": true,
-    "lr": 0.00005,
+    "lr": 5e-05,
     "factor": 0.1,
-    "min-lr": 0.000001,
+    "min-lr": 1e-06,
     "patience": 4,
     "epochs": 50,
     "batch-size": 16,
@@ -34,7 +37,7 @@
   },
   "sensorConfig": {
     "camera-tilt": 0.0,
-    "sensor-offsetX-ANYmal": 0.0,
+    "sensor-offsetX-ANYmal": 0.325,
     "fear-ahead-dist": 2.0
   }
 }

@@ -15,10 +15,9 @@
   <!-- Runtime configuration -->
   <arg name="config" default="go2_odin" />
   <arg name="joyTopic" default="/go2/joy" />
-  <arg name="sensorOffsetX" default="0.3" />
+  <arg name="sensorOffsetX" default="0.325" />
   <arg name="sensorOffsetY" default="0" />
-  <arg name="cameraOffsetZ" default="0" />
-  <arg name="maxSpeed" default="1.0" />
+    <arg name="maxSpeed" default="1.0" />
   <arg name="autonomyMode" default="true" />
   <arg name="autonomySpeed" default="1.0" />
   <arg name="joyToSpeedDelay" default="2.0" />
@@ -92,7 +91,7 @@
   <node pkg="tf" type="static_transform_publisher" name="vehicleTransPublisher"
         args="-$(arg sensorOffsetX) -$(arg sensorOffsetY) 0 0 0 0 /sensor /vehicle 1000" />
   <node pkg="tf" type="static_transform_publisher" name="sensorTransPublisher"
-        args="0 0 $(arg cameraOffsetZ) -1.5707963 0 -1.5707963 /sensor /camera 1000" />
+        args="0.00137656 0.02511966 -0.00162311 -1.58066166 0.00707324 -1.57152611 /sensor /camera 1000" />
 
   <group if="$(arg start_rviz)">
     <node type="rviz" name="iplanner_rviz" pkg="rviz" args="-d $(find iplanner_node)/rviz/default.rviz" respawn="false" />
