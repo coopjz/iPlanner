@@ -1,0 +1,44 @@
+# Go2 real-robot configuration: iPlanner consumes Odin depth and publishes /path.
+# Odometry/TF is provided by loam_interface_odin as /state_estimation and map->sensor.
+main_freq:              15
+image_flip:             False
+conv_dist:              0.25
+is_sim:                 False
+
+# network model
+model_save:             /models/plannernet.pt
+crop_size:              [360, 640]
+uint_type:              False
+
+# Odin depth + navigation topics
+depth_topic:            /odin1/depth_img_competetion
+goal_topic:             /way_point
+path_topic:             /path
+image_topic:            /iplanner_image
+camera_tilt:            0.0
+depth_max:              10.0
+
+# frame ids aligned with AEE pathFollower/static TF
+robot_id:               vehicle
+world_id:               map
+
+# fear reaction
+is_fear_act:            True
+buffer_size:            3
+angular_thred:          0.5
+track_dist:             0.5
+
+# sensor offset retained for compatibility with iPlanner args
+sensor_offset_x:        0.0
+sensor_offset_y:        0.0
+
+# Smart Joystick from Go2 wireless controller via /go2/joy.
+# go2_twist_bridge publishes axes: 0=lx, 1=ly, 2=rx, 3=ry, 4=unused, 5=L1 analog.
+# Use left stick as the iPlanner local-goal command and R2 (button 4) to enter Smart Joystick mode.
+joyGoal_scale:          5.0
+joyGoal_forward_axis:   1
+joyGoal_lateral_axis:   0
+joyGoal_enable_button:  4
+joyGoal_forward_sign:   1.0
+joyGoal_lateral_sign:   1.0
+joyGoal_deadband:       0.05

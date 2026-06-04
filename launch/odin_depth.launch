@@ -1,0 +1,17 @@
+<launch>
+  <!-- Odin-only launch for iPlanner perception/odometry input.
+       Starts the Odin SDK node plus pcd2depth_node. It intentionally does not
+       start iPlanner, pathFollower, Go2 control, or AEE local planner. -->
+
+  <arg name="odin_config_file" default="$(find odin_ros_driver)/config/control_command.yaml" />
+  <arg name="odin_calib_file" default="$(find odin_ros_driver)/config/calib.yaml" />
+
+  <node name="host_sdk_sample" pkg="odin_ros_driver" type="host_sdk_sample" output="screen">
+    <param name="config_file" value="$(arg odin_config_file)" />
+  </node>
+
+  <node pkg="odin_ros_driver" type="pcd2depth_node" name="pcd2depth_node" output="screen">
+    <rosparam command="load" file="$(arg odin_config_file)" />
+    <param name="calib_file_path" value="$(arg odin_calib_file)" />
+  </node>
+</launch>

@@ -1,0 +1,120 @@
+<launch>
+  <!-- Go2 + iPlanner visualization bringup.
+       This launch uses iplanner_viz.py instead of iplanner_node.py.
+       iplanner_viz.py is still a full planner node: it consumes Odin depth,
+       publishes /path and /path_fear, and additionally publishes the rendered
+       planner image to image_topic, e.g. /iplanner_image.
+
+       Do not run this together with go2_odin_iplanner.launch because both use
+       node name /iplanner_node and both publish /path.
+
+       External hardware/SDK launches (Odin driver, Go2 bridge) are owned by
+       scripts/start_go2_iplanner.sh and their native workspaces, not this file. -->
+
+  <!-- Package launch toggles -->
+  <arg name="start_loam_interface" default="true" />
+  <arg name="start_iplanner" default="true" />
+  <arg name="start_path_follower" default="true" />
+  <arg name="start_terrain_map" default="true" />
+  <arg name="start_rviz" default="true" />
+
+  <!-- Runtime configuration -->
+  <arg name="config" default="go2_odin" />
+  <arg name="joyTopic" default="/go2/joy" />
+  <arg name="sensorOffsetX" default="0.1" />
+  <arg name="sensorOffsetY" default="0" />
+  <arg name="cameraOffsetZ" default="0" />
+  <arg name="maxSpeed" default="1.0" />
+  <arg name="autonomyMode" default="true" />
+  <arg name="autonomySpeed" default="1.0" />
+  <arg name="joyToSpeedDelay" default="2.0" />
+  <arg name="checkTerrainConn" default="false" />
+
+  <group if="$(arg start_loam_interface)">
+    <include file="$(find loam_interface)/launch/loam_interface_odin.launch" />
+  </group>
+
+
+  <group if="$(arg start_iplanner)">
+    <node pkg="iplanner_node" type="iplanner_viz.py" name="iplanner_node" output="screen" required="true">
+      <rosparam command="load" file="$(find iplanner_node)/config/$(arg config).yaml" />
+      <remap from="/joy" to="$(arg joyTopic)" />
+    </node>
+  </group>
+
+
+  <group if="$(arg start_terrain_map)">
+    <!-- Terrain visualization chain from AEE real-robot Odin launch.
+         Inputs: /registered_scan and /state_estimation from loamInterface.
+         Outputs for RViz/debug: /terrain_map, /terrain_map_ext, /sensor_scan.
+         This is visualization/support only; AEE localPlanner is intentionally not launched. -->
+    <include file="$(find terrain_analysis)/launch/terrain_analysis_odin.launch" />
+    <include file="$(find terrain_analysis_ext)/launch/terrain_analysis_ext.launch">
+      <arg name="checkTerrainConn" value="$(arg checkTerrainConn)" />
+    </include>
+    <include file="$(find sensor_scan_generation)/launch/sensor_scan_generation.launch" />
+  </group>
+
+  <group if="$(arg start_path_follower)">
+    <node pkg="local_planner" type="pathFollower" name="pathFollower" output="screen" required="false">
+      <remap from="/joy" to="$(arg joyTopic)" />
+
+      <!-- Geometry / drive -->
+      <param name="sensorOffsetX" value="$(arg sensorOffsetX)" />
+      <param name="sensorOffsetY" value="$(arg sensorOffsetY)" />
+      <param name="pubSkipNum" type="int" value="1" />
+      <param name="twoWayDrive" type="bool" value="false" />
+
+      <!-- Smooth Go2 tracking parameters copied from tuned AEE launch -->
+      <param name="lookAheadDis" type="double" value="1.5" />
+      <param name="yawRateGain" type="double" value="1.5" />
+      <param name="stopYawRateGain" type="double" value="1.5" />
+      <param name="maxYawRate" type="double" value="90.0" />
+      <param name="noRotSpeed" type="double" value="0.60" />
+      <param name="goalCloseDis" type="double" value="1.2" />
+
+      <!-- Speed / acceleration -->
+      <param name="maxSpeed" value="$(arg maxSpeed)" />
+      <param name="maxAccel" type="double" value="2.0" />
+
+      <!-- Direction switching -->
+      <param name="switchTimeThre" type="double" value="1.0" />
+      <param name="dirDiffThre" type="double" value="0.85" />
+      <param name="omniDirDiffThre" type="double" value="1.5" />
+
+      <!-- Stop / slowdown distances -->
+      <param name="stopDisThre" type="double" value="0.45" />
+      <param name="slowDwnDisThre" type="double" value="0.85" />
+
+      <!-- Incline-based slowdown / stop disabled for Odin+iPlanner bringup -->
+      <param name="useInclRateToSlow" type="bool" value="false" />
+      <param name="inclRateThre" type="double" value="120.0" />
+      <param name="slowRate1" type="double" value="0.25" />
+      <param name="slowRate2" type="double" value="0.5" />
+      <param name="slowTime1" type="double" value="2.0" />
+      <param name="slowTime2" type="double" value="2.0" />
+      <param name="useInclToStop" type="bool" value="false" />
+      <param name="inclThre" type="double" value="45.0" />
+      <param name="stopTime" type="double" value="5.0" />
+
+      <!-- Rotation at stop/goal -->
+      <param name="noRotAtStop" type="bool" value="false" />
+      <param name="noRotAtGoal" type="bool" value="true" />
+
+      <!-- Autonomy speed fallback -->
+      <param name="autonomyMode" value="$(arg autonomyMode)" />
+      <param name="autonomySpeed" value="$(arg autonomySpeed)" />
+      <param name="joyToSpeedDelay" value="$(arg joyToSpeedDelay)" />
+    </node>
+  </group>
+
+  <!-- TF needed by iPlanner goal transform, visualization, and pathFollower/AEE frame conventions. -->
+  <node pkg="tf" type="static_transform_publisher" name="vehicleTransPublisher"
+        args="-$(arg sensorOffsetX) -$(arg sensorOffsetY) 0 0 0 0 /sensor /vehicle 1000" />
+  <node pkg="tf" type="static_transform_publisher" name="sensorTransPublisher"
+        args="0 0 $(arg cameraOffsetZ) -1.5707963 0 -1.5707963 /sensor /camera 1000" />
+
+  <group if="$(arg start_rviz)">
+    <node type="rviz" name="iplanner_rviz" pkg="rviz" args="-d $(find iplanner_node)/rviz/default.rviz" respawn="false" />
+  </group>
+</launch>

@@ -93,6 +93,12 @@ class iPlannerNode:
         self.ang_thred   = args.angular_thred
         self.track_dist  = args.track_dist
         self.joyGoal_scale = args.joyGoal_scale
+        self.joyGoal_forward_axis = int(args.joyGoal_forward_axis)
+        self.joyGoal_lateral_axis = int(args.joyGoal_lateral_axis)
+        self.joyGoal_enable_button = int(args.joyGoal_enable_button)
+        self.joyGoal_forward_sign = float(args.joyGoal_forward_sign)
+        self.joyGoal_lateral_sign = float(args.joyGoal_lateral_sign)
+        self.joyGoal_deadband = float(args.joyGoal_deadband)
         return 
 
     def spin(self):
@@ -179,14 +185,32 @@ class iPlannerNode:
         return False
 
     def joyCallback(self, joy_msg):
-        if joy_msg.buttons[4] > 0.9:
-            rospy.loginfo("Switch to Smart Joystick mode ...")
+        max_axis = max(self.joyGoal_forward_axis, self.joyGoal_lateral_axis)
+        if len(joy_msg.axes) <= max_axis:
+            rospy.logwarn_throttle(
+                2.0,
+                "Joy message has %d axes; iPlanner needs axis %d for Smart Joystick.",
+                len(joy_msg.axes), max_axis)
+            return
+        if len(joy_msg.buttons) <= self.joyGoal_enable_button:
+            rospy.logwarn_throttle(
+                2.0,
+                "Joy message has %d buttons; iPlanner needs button %d for Smart Joystick.",
+                len(joy_msg.buttons), self.joyGoal_enable_button)
+            return
+
+        if joy_msg.buttons[self.joyGoal_enable_button] > 0.9:
+            rospy.loginfo_throttle(1.0, "Switch to Smart Joystick mode ...")
             self.is_smartjoy = True
             # reset fear reaction
             self.fear_buffter = 0
             self.is_fear_reaction = False
+
+        forward = self.joyGoal_forward_sign * joy_msg.axes[self.joyGoal_forward_axis]
+        lateral = self.joyGoal_lateral_sign * joy_msg.axes[self.joyGoal_lateral_axis]
+
         if self.is_smartjoy:
-            if np.sqrt(joy_msg.axes[3]**2 + joy_msg.axes[4]**2) < 1e-3:
+            if np.sqrt(forward**2 + lateral**2) < self.joyGoal_deadband:
                 # reset fear reaction
                 self.fear_buffter = 0
                 self.is_fear_reaction = False
@@ -195,8 +219,8 @@ class iPlannerNode:
             else:
                 joy_goal = PointStamped()
                 joy_goal.header.frame_id = self.frame_id
-                joy_goal.point.x = joy_msg.axes[4] * self.joyGoal_scale
-                joy_goal.point.y = joy_msg.axes[3] * self.joyGoal_scale
+                joy_goal.point.x = forward * self.joyGoal_scale
+                joy_goal.point.y = lateral * self.joyGoal_scale
                 joy_goal.point.z = 0.0
                 joy_goal.header.stamp = rospy.Time.now()
                 self.goal_pose = joy_goal
@@ -275,6 +299,12 @@ if __name__ == '__main__':
     parser.add_argument('angular_thred',     type=float, default=0.3,                        help='Angular threshold for turning.')
     parser.add_argument('track_dist',        type=float, default=0.5,                        help='Look-ahead distance for path tracking.')
     parser.add_argument('joyGoal_scale',     type=float, default=0.5,                        help='Scale for joystick goal distance.')
+    parser.add_argument('joyGoal_forward_axis',  type=int,   default=4,                      help='Joy axis used as iPlanner Smart Joystick forward goal input.')
+    parser.add_argument('joyGoal_lateral_axis',  type=int,   default=3,                      help='Joy axis used as iPlanner Smart Joystick lateral goal input.')
+    parser.add_argument('joyGoal_enable_button', type=int,   default=4,                      help='Joy button that enables iPlanner Smart Joystick mode.')
+    parser.add_argument('joyGoal_forward_sign',  type=float, default=1.0,                    help='Sign multiplier for Smart Joystick forward axis.')
+    parser.add_argument('joyGoal_lateral_sign',  type=float, default=1.0,                    help='Sign multiplier for Smart Joystick lateral axis.')
+    parser.add_argument('joyGoal_deadband',      type=float, default=1e-3,                   help='Deadband for Smart Joystick goal input norm.')
     parser.add_argument('sensor_offset_x',   type=float, default=0.0,                        help='Sensor offset on the X-axis.')
     parser.add_argument('sensor_offset_y',   type=float, default=0.0,                        help='Sensor offset on the Y-axis.')
 
