@@ -23,9 +23,9 @@
   <arg name="joyTopic" default="/go2/joy" />
   <arg name="sensorOffsetX" default="0.325" />
   <arg name="sensorOffsetY" default="0" />
-    <arg name="maxSpeed" default="1.0" />
+    <arg name="maxSpeed" default="0.5" />
   <arg name="autonomyMode" default="true" />
-  <arg name="autonomySpeed" default="1.0" />
+  <arg name="autonomySpeed" default="0.5" />
   <arg name="joyToSpeedDelay" default="2.0" />
   <arg name="checkTerrainConn" default="false" />
 
