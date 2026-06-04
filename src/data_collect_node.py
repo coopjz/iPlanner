@@ -54,7 +54,8 @@ class DataCollector:
         odom_sub  = message_filters.Subscriber(self.__odom_topic,  Odometry)
         scan_sub  = message_filters.Subscriber(self.__scan_topic,  PointCloud2)
 
-        time_sync_thred = 0.01 # second 
+        time_sync_thred = self.__time_sync_slop # second
+        rospy.loginfo("data_collect_node ApproximateTimeSynchronizer slop: %.3fs", time_sync_thred)
         ts = message_filters.ApproximateTimeSynchronizer([image_sub, depth_sub, scan_sub, odom_sub], 50, time_sync_thred)
         ts.registerCallback(self.__syncCallback)
 
@@ -88,6 +89,7 @@ class DataCollector:
         self.__scan_frame_id     = args.scan_frame_id
         self.__base_frame_id     = args.base_frame_id
         self.__odom_associate_id = args.odom_associate_id
+        self.__time_sync_slop     = args.time_sync_slop
 
         self.__depth_intrinc_path  = os.path.join(self.__root_path, "depth_intrinsic.txt")
         self.__color_intrinc_path  = os.path.join(self.__root_path, "color_intrinsic.txt")
@@ -244,6 +246,7 @@ if __name__ == '__main__':
     parser.add_argument('scan_frame_id',     type=str,   default='sensor',                         help='Frame ID for the lidar sensor.')
     parser.add_argument('base_frame_id',     type=str,   default='vehicle',                        help='Base frame ID.')
     parser.add_argument('odom_associate_id', type=str,   default='vehicle',                        help='Frame ID associated with odometry data.')
+    parser.add_argument('time_sync_slop',    type=float, default=0.01,                             help='Approximate time sync slop in seconds for image/depth/scan/odom.')
 
     rospack = rospkg.RosPack()
     pack_path = rospack.get_path("iplanner_node")

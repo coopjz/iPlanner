@@ -1,0 +1,24 @@
+# Odin + Go2 real-robot data collection for iPlanner finetuning.
+main_freq:              2.5
+
+# Odin/iPlanner runtime topics
+depth_topic:            /odin1/depth_img_competetion
+color_topic:            /odin1/image
+scan_topic:             /registered_scan
+odom_topic:             /state_estimation
+
+# CameraInfo is provided by odin_camera_info_publisher.py from odin_ros_driver calib.yaml.
+depth_info_topic:       /odin1/depth/camera_info
+color_info_topic:       /odin1/color/camera_info
+
+# Frame conventions from go2_odin_iplanner*.launch and loam_interface_odin.
+camera_frame_id:        camera
+scan_frame_id:          sensor
+base_frame_id:          vehicle
+odom_associate_id:      sensor
+
+# Real sensors are not perfectly timestamp aligned.
+time_sync_slop:         0.05
+
+# Default environment folder under iplanner/data/CollectedData.
+env_name:               go2_odin_001

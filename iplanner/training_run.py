@@ -64,14 +64,17 @@ class PlannerNetTrainer:
         )
 
     def load_config(self):
-        with open(os.path.join(os.path.dirname(self.root_folder), 'config', 'training_config.json')) as json_file:
+        config_path = os.getenv('IP_TRAINING_CONFIG',
+                                os.path.join(os.path.dirname(self.root_folder), 'config', 'training_config.json'))
+        print("Training config:", config_path)
+        with open(config_path) as json_file:
             self.config = json.load(json_file)
 
     def prepare_model(self):
         self.net = PlannerNet(self.args.in_channel, self.args.knodes)
         if self.args.resume == True or not self.args.training:
-            self.net, self.best_loss = torch.load(self.args.model_save, map_location=torch.device("cpu"))
-            print("Resume training from best loss: {}".format(self.best_loss))
+            self.net, self.best_loss = torch.load(self.args.model_load, map_location=torch.device("cpu"))
+            print("Resume training from {} with best loss: {}".format(self.args.model_load, self.best_loss))
         else:
             self.best_loss = float('Inf')
 
@@ -293,6 +296,7 @@ class PlannerNetTrainer:
         parser.add_argument('--max-camera-depth', type=float, default=self.config['dataConfig'].get('max-camera-depth'), help='maximum depth detection of camera, unit: meter')
 
         # modelConfig
+        parser.add_argument("--model-load", type=str, default=os.path.join(self.root_folder, self.config['modelConfig'].get('model-load', self.config['modelConfig'].get('model-save'))), help="model checkpoint to load when resume/testing is enabled")
         parser.add_argument("--model-save", type=str, default=os.path.join(self.root_folder, self.config['modelConfig'].get('model-save')), help="model save point")
         parser.add_argument('--resume', type=str, default=self.config['modelConfig'].get('resume'))
         parser.add_argument('--in-channel', type=int, default=self.config['modelConfig'].get('in-channel'), help='goal input channel numbers')

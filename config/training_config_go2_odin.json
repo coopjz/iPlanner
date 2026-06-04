@@ -1,0 +1,40 @@
+{
+  "dataConfig": {
+    "data-root": "data",
+    "env-id": "training_list_go2_odin.txt",
+    "env_type": "TrainingDataGo2Odin",
+    "crop-size": [360, 640],
+    "max-camera-depth": 10.0
+  },
+  "modelConfig": {
+    "model-load": "models/plannernet.pt",
+    "model-save": "models/plannernet_go2_odin_ft.pt",
+    "resume": true,
+    "in-channel": 16,
+    "knodes": 5,
+    "goal-step": 5,
+    "max-episode-length": 25
+  },
+  "trainingConfig": {
+    "training": true,
+    "lr": 0.00005,
+    "factor": 0.1,
+    "min-lr": 0.000001,
+    "patience": 4,
+    "epochs": 50,
+    "batch-size": 16,
+    "w-decay": 0.001,
+    "num-workers": 2,
+    "gpu-id": 0
+  },
+  "logConfig": {
+    "log-save": "models/log-go2-odin-",
+    "test-env-id": 0,
+    "visual-number": 10
+  },
+  "sensorConfig": {
+    "camera-tilt": 0.0,
+    "sensor-offsetX-ANYmal": 0.0,
+    "fear-ahead-dist": 2.0
+  }
+}

@@ -1,0 +1,30 @@
+<launch>
+  <!-- Collect iPlanner finetune data from the current Odin + Go2 sensor setup.
+       This launch does NOT start Odin or Go2 SDK nodes. It can optionally start
+       loamInterface to expose /state_estimation and /registered_scan from Odin. -->
+  <arg name="config" default="data_params_go2_odin" />
+  <arg name="env_name" default="go2_odin_001" />
+  <arg name="start_loam_interface" default="false" />
+  <arg name="start_camera_info" default="true" />
+  <arg name="odin_calib_file" default="$(env HOME)/dog_nav_stack_demo/odin_ros_driver_main/src/odin_ros_driver/config/calib.yaml" />
+
+  <group if="$(arg start_loam_interface)">
+    <include file="$(find loam_interface)/launch/loam_interface_odin.launch" />
+  </group>
+
+  <group if="$(arg start_camera_info)">
+    <node pkg="iplanner_node" type="odin_camera_info_publisher.py" name="odin_camera_info_publisher" output="screen">
+      <param name="calib_file" value="$(arg odin_calib_file)" />
+      <param name="camera_key" value="cam_0" />
+      <param name="frame_id" value="camera" />
+      <param name="depth_info_topic" value="/odin1/depth/camera_info" />
+      <param name="color_info_topic" value="/odin1/color/camera_info" />
+      <param name="publish_rate" value="5.0" />
+    </node>
+  </group>
+
+  <node pkg="iplanner_node" type="data_collect_node.py" name="data_collect_node" output="screen">
+    <rosparam command="load" file="$(find iplanner_node)/config/$(arg config).yaml" />
+    <param name="env_name" value="$(arg env_name)" />
+  </node>
+</launch>

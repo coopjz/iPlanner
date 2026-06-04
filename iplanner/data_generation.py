@@ -16,12 +16,15 @@ if __name__ == '__main__':
     
     root_folder = os.getenv('EXPERIMENT_DIRECTORY', os.getcwd())
     # Load parameters from json file
-    with open(os.path.join(os.path.dirname(root_folder), 'config', 'data_generation.json')) as json_file:
+    config_path = os.getenv('IP_DATA_GENERATION_CONFIG',
+                             os.path.join(os.path.dirname(root_folder), 'config', 'data_generation.json'))
+    print("Data generation config:", config_path)
+    with open(config_path) as json_file:
         parameters = json.load(json_file)
     
     folder_name = parameters.get('folder_name', "CollectedData")
     folder_path = os.path.join(*[root_folder, "data"])
-    ids_path = os.path.join(folder_path, "collect_list.txt")
+    ids_path = os.path.join(folder_path, parameters.get('collect_list', "collect_list.txt"))
     
     if not folder_name == "":
         folder_path = os.path.join(folder_path, folder_name)
