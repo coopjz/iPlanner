@@ -35,7 +35,7 @@
   </group>
 
   <group if="$(arg start_path_follower)">
-    <node pkg="local_planner" type="pathFollower" name="pathFollower" output="screen" required="true">
+    <node pkg="local_planner" type="pathFollower" name="pathFollower" output="screen" required="false">
       <remap from="/joy" to="$(arg joyTopic)" />
 
       <!-- Geometry / drive -->
@@ -46,8 +46,8 @@
 
       <!-- Smooth Go2 tracking parameters copied from tuned AEE launch -->
       <param name="lookAheadDis" type="double" value="1.5" />
-      <param name="yawRateGain" type="double" value="1.5" />
-      <param name="stopYawRateGain" type="double" value="1.5" />
+      <param name="yawRateGain" type="double" value="4.5" />
+      <param name="stopYawRateGain" type="double" value="4.5" />
       <param name="maxYawRate" type="double" value="90.0" />
       <param name="noRotSpeed" type="double" value="0.60" />
       <param name="goalCloseDis" type="double" value="1.2" />
@@ -58,7 +58,7 @@
 
       <!-- Direction switching -->
       <param name="switchTimeThre" type="double" value="1.0" />
-      <param name="dirDiffThre" type="double" value="0.85" />
+      <param name="dirDiffThre" type="double" value="0.15" />
       <param name="omniDirDiffThre" type="double" value="1.5" />
 
       <!-- Stop / slowdown distances -->

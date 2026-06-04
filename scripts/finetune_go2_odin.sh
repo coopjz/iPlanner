@@ -4,6 +4,10 @@ PKG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export EXPERIMENT_DIRECTORY="$PKG_DIR/iplanner"
 export IP_TRAINING_CONFIG="${IP_TRAINING_CONFIG:-$PKG_DIR/config/training_config_go2_odin.json}"
 export WANDB_MODE="${WANDB_MODE:-offline}"
+# Do not force QT_QPA_PLATFORM=offscreen here: Open3D EGL rendering plus
+# OpenCV's Qt-backed imshow can crash with cv2's offscreen platform plugin.
+# Set QT_QPA_PLATFORM explicitly at the call site only when needed.
+export OPENCV_LOG_LEVEL="${OPENCV_LOG_LEVEL:-ERROR}"
 DEFAULT_IPLANNER_PYTHON="/home/cooper/miniforge3/envs/iplanner/bin/python"
 if [[ -n "${IP_PYTHON:-}" ]]; then
   PYTHON_BIN="$IP_PYTHON"

@@ -10,7 +10,7 @@
 import os
 import json
 from tsdf_map import TSDF_Map
-from esdf_mapping import TSDF_Creator, DepthReconstruction
+from esdf_mapping import DataUtils, TSDF_Creator, DepthReconstruction, ScanReconstruction
 
 if __name__ == '__main__':
     
@@ -39,29 +39,45 @@ if __name__ == '__main__':
     output_folder = os.path.join(*[root_folder, "data", outfolder_name])
 
     image_type = parameters.get('image_type', "depth")
+    cloud_source = parameters.get('cloud_source',
+                                  parameters.get('reconstruction_source',
+                                                 parameters.get('map_source', "depth"))).lower()
     voxel_size = parameters.get('voxel_size', 0.05)
     robot_size = parameters.get('robot_size', 0.3)  # the inflated robot radius
     map_name = parameters.get('map_name', "tsdf1")
     is_max_iter = parameters.get('is_max_iter', True)
     max_depth_range = parameters.get('max_depth_range', 10.0)
+    max_scan_range = parameters.get('max_scan_range', max_depth_range)
+    scan_transform_mode = parameters.get('scan_transform_mode', "sensor_to_world")
     is_flat_ground = parameters.get('is_flat_ground', True)
     is_visualize = parameters.get('is_visualize', False)
+    save_visualizations = parameters.get('save_visualizations', False)
+    visualization_prefix = parameters.get('visualization_prefix', map_name)
     robot_height_override = parameters.get('robot_height', None)
     ground_z_override = parameters.get('ground_z', None)
     ground_z_offset = parameters.get('ground_z_offset', None)
+    heatmap_overview_items = []
+    occupancy_overview_items = []
 
     for env_name in env_list:
         root_path = os.path.join(*[folder_path, env_name])
-        image_path = os.path.join(root_path, 'depth')
-
-        total_data_n = len([name for name in os.listdir(image_path) if os.path.isfile(os.path.join(image_path, name))])
         print("================= Reconstruction of env: %s =================="%(env_name))
         out_path = os.path.join(output_folder, env_name)
-        
-        depth_constructor = DepthReconstruction(root_path, out_path, 0, 100, voxel_size*0.9, max_depth_range, is_max_iter)
-        depth_constructor.depth_map_reconstruction(is_flat_ground=is_flat_ground)
-        depth_constructor.save_reconstructed_data(image_type=image_type)
-        avg_height = depth_constructor.avg_height
+
+        if cloud_source == "depth":
+            reconstructor = DepthReconstruction(root_path, out_path, 0, 100, voxel_size*0.9, max_depth_range, is_max_iter)
+            reconstructor.depth_map_reconstruction(is_flat_ground=is_flat_ground)
+            reconstructor.save_reconstructed_data(image_type=image_type)
+            avg_height = reconstructor.avg_height
+        elif cloud_source in ("scan", "pointcloud", "point_cloud", "deskewed_scan"):
+            reconstructor = ScanReconstruction(root_path, out_path, 0, 100, voxel_size*0.9, max_scan_range,
+                                               is_max_iter, scan_transform_mode)
+            reconstructor.scan_cloud_reconstruction()
+            reconstructor.save_reconstructed_data(image_type=image_type)
+            avg_height = reconstructor.avg_height
+        else:
+            raise ValueError("Unsupported cloud_source '%s'. Use 'depth' or 'scan'." % cloud_source)
+
         robot_height = avg_height if robot_height_override is None else robot_height_override
         if ground_z_override is not None:
             ground_z = ground_z_override
@@ -73,7 +89,7 @@ if __name__ == '__main__':
         print("TSDF robot height: ", robot_height)
         print("TSDF ground z: ", ground_z)
         if is_visualize:
-            depth_constructor.show_point_cloud()
+            reconstructor.show_point_cloud()
 
         # Construct the 2D cost map
         tsdf_creator = TSDF_Creator(out_path, voxel_size=voxel_size, robot_size=robot_size,
@@ -88,5 +104,17 @@ if __name__ == '__main__':
         tsdf_map = TSDF_Map()
         tsdf_map.DirectLoadMap(data, coord, params)
         tsdf_map.SaveTSDFMap(out_path, map_name)
+        if save_visualizations:
+            viz_paths = tsdf_creator.save_map_visualizations(out_path, map_name)
+            if viz_paths is not None:
+                heatmap_overview_items.append((env_name, viz_paths["heatmap"]))
+                occupancy_overview_items.append((env_name, viz_paths["occupancy"]))
         if is_visualize:
             tsdf_map.ShowTSDFMap(cost_map=True)
+
+    if save_visualizations:
+        heatmap_overview_path = os.path.join(output_folder, visualization_prefix + "_heatmap_overview.png")
+        occupancy_overview_path = os.path.join(output_folder, visualization_prefix + "_occupancy_overview.png")
+        DataUtils.save_image_overview(heatmap_overview_items, heatmap_overview_path)
+        DataUtils.save_image_overview(occupancy_overview_items, occupancy_overview_path)
+        print("Map visualization overviews saved.")

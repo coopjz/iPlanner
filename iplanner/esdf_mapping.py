@@ -10,6 +10,7 @@
 import os
 import cv2
 import math
+import shutil
 import numpy as np
 import open3d as o3d
 from scipy import ndimage
@@ -99,6 +100,24 @@ class DataUtils:
         return o3d.io.read_point_cloud(path)
 
     @staticmethod
+    def list_indexed_files(folder_path, suffix):
+        if not os.path.isdir(folder_path):
+            return []
+
+        indexed_files = []
+        for name in os.listdir(folder_path):
+            stem, ext = os.path.splitext(name)
+            if ext.lower() != suffix.lower():
+                continue
+            try:
+                idx = int(stem)
+            except ValueError:
+                continue
+            indexed_files.append((idx, os.path.join(folder_path, name)))
+        indexed_files.sort(key=lambda item: item[0])
+        return [path for _, path in indexed_files]
+
+    @staticmethod
     def prepare_output_folders(out_path, image_type):
         depth_im_path = os.path.join(out_path, image_type)
         if not os.path.exists(out_path):
@@ -110,6 +129,11 @@ class DataUtils:
         elif os.path.exists(depth_im_path):  # remove existing files
             for efile in os.listdir(depth_im_path):
                 os.remove(os.path.join(depth_im_path, efile))
+        else:
+            os.makedirs(depth_im_path)
+        os.makedirs(os.path.join(out_path, "maps", "cloud"), exist_ok=True)
+        os.makedirs(os.path.join(out_path, "maps", "data"), exist_ok=True)
+        os.makedirs(os.path.join(out_path, "maps", "params"), exist_ok=True)
         return None
     
     @staticmethod
@@ -154,6 +178,94 @@ class DataUtils:
     def save_point_cloud(out_path, pcd):
         o3d.io.write_point_cloud(os.path.join(out_path, "cloud.ply"), pcd)  # save point cloud
         return None
+
+    @staticmethod
+    def copy_if_exists(src_path, dst_path):
+        if os.path.exists(src_path):
+            shutil.copyfile(src_path, dst_path)
+            return True
+        return False
+
+    @staticmethod
+    def pose_to_matrix(pose):
+        T = np.eye(4)
+        T[:3, :3] = R.from_quat(pose[3:]).as_matrix()
+        T[:3, 3] = np.array(pose[:3])
+        return T
+
+    @staticmethod
+    def extrinsic_to_matrix(rotation, translation):
+        T = np.eye(4)
+        T[:3, :3] = rotation.as_matrix()
+        T[:3, 3] = translation
+        return T
+
+    @staticmethod
+    def transform_points(points, transform):
+        if points.shape[0] == 0:
+            return points
+        points_h = np.concatenate((points, np.ones((points.shape[0], 1))), axis=1)
+        return (transform.dot(points_h.T)).T[:, :3]
+
+    @staticmethod
+    def normalize_array_to_uint8(array, transpose=True):
+        image = np.asarray(array, dtype=np.float32)
+        if transpose:
+            image = np.flipud(image.T)
+        finite_mask = np.isfinite(image)
+        if not np.any(finite_mask):
+            return np.zeros(image.shape, dtype=np.uint8)
+        finite_values = image[finite_mask]
+        min_value = np.min(finite_values)
+        max_value = np.max(finite_values)
+        if max_value - min_value < 1e-6:
+            return np.zeros(image.shape, dtype=np.uint8)
+        image = (image - min_value) / (max_value - min_value)
+        image[~finite_mask] = 0.0
+        return np.uint8(np.clip(image * 255.0, 0, 255))
+
+    @staticmethod
+    def save_array_visualization(array, output_path, colormap=None, transpose=True):
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        image = DataUtils.normalize_array_to_uint8(array, transpose=transpose)
+        if colormap is not None:
+            image = cv2.applyColorMap(image, colormap)
+        cv2.imwrite(output_path, image)
+        return output_path
+
+    @staticmethod
+    def save_image_overview(items, output_path, tile_width=360, image_height=240, label_height=34):
+        if len(items) == 0:
+            return None
+
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        cols = min(3, len(items))
+        rows = int(np.ceil(len(items) / cols))
+        tile_height = image_height + label_height
+        canvas = np.ones((rows * tile_height, cols * tile_width, 3), dtype=np.uint8) * 255
+
+        for idx, (label, image_path) in enumerate(items):
+            image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+            if image is None:
+                continue
+
+            scale = min(tile_width / image.shape[1], image_height / image.shape[0])
+            new_width = max(1, int(image.shape[1] * scale))
+            new_height = max(1, int(image.shape[0] * scale))
+            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
+            row = idx // cols
+            col = idx % cols
+            x0 = col * tile_width + (tile_width - new_width) // 2
+            y0 = row * tile_height + label_height + (image_height - new_height) // 2
+            canvas[y0:y0 + new_height, x0:x0 + new_width] = image
+
+            label_origin = (col * tile_width + 10, row * tile_height + 23)
+            cv2.putText(canvas, label, label_origin, cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6, (30, 30, 30), 1, cv2.LINE_AA)
+
+        cv2.imwrite(output_path, canvas)
+        return output_path
 
 class TSDF_Creator:
     def __init__(self, input_path, voxel_size, robot_height, robot_size, clear_dist=1.0, ground_z=0.0):
@@ -243,12 +355,28 @@ class TSDF_Creator:
 
         # Distance Transform
         tsdf_array = self._distance_transform_and_smooth(free_map, sigma_smooth)
+        self.occupancy_array = obs_map
+        self.free_array = free_map
+        self.tsdf_array = tsdf_array
 
         viz_points = np.concatenate((self.obs_points, self.free_points), axis=0)
         # TODO: Use true terrain analysis module
         ground_array = np.ones([self.num_x, self.num_y]) * 0.0
 
         return [tsdf_array, viz_points, ground_array], [self.start_x, self.start_y], [self.voxel_size, self.clear_dist]
+
+    def save_map_visualizations(self, root_path, map_name):
+        if not hasattr(self, "tsdf_array") or not hasattr(self, "occupancy_array"):
+            print("save map visualizations failed, TSDF map has not been created.")
+            return None
+
+        viz_dir = os.path.join(root_path, "maps", "viz")
+        heatmap_path = os.path.join(viz_dir, map_name + "_heatmap.png")
+        occupancy_path = os.path.join(viz_dir, map_name + "_occupancy.png")
+        DataUtils.save_array_visualization(self.tsdf_array, heatmap_path, colormap=cv2.COLORMAP_JET)
+        DataUtils.save_array_visualization(self.occupancy_array, occupancy_path, colormap=None)
+        print("Map visualizations saved.")
+        return {"heatmap": heatmap_path, "occupancy": occupancy_path}
     
     def filter_cloud(self, points, num_nbs=100, std_ratio=1.0):
         pcd = self._convert_to_point_cloud(points)
@@ -402,5 +530,156 @@ class DepthReconstruction:
         # Get Camera Parameters
         self.K = DataUtils.read_intrinsic(self.input_path + "/depth_intrinsic.txt")
         self.cameraR, self.cameraT = DataUtils.read_extrinsic(self.input_path + "/camera_extrinsic.txt")
+
+
+class ScanReconstruction:
+    """Fuse collected, de-skewed scan point clouds into the map cloud.
+
+    The data collector already stores synchronized ``scan/<idx>.ply`` files.
+    This class provides an alternative to depth-image back-projection: transform
+    each scan into the world frame, voxel down-sample the fused cloud, then save
+    it as the same ``cloud.ply`` consumed by ``TSDF_Creator``.
+    """
+
+    VALID_TRANSFORM_MODES = ("sensor_to_world", "base_to_world", "world")
+
+    def __init__(self, input_path, out_path, start_id, iters, voxel_size, max_range,
+                 is_max_iter=True, transform_mode="sensor_to_world"):
+        self._initialize_paths(input_path, out_path)
+        self._initialize_parameters(voxel_size, max_range, is_max_iter, transform_mode)
+        self._read_params()
+
+        self.odom_list, self._avg_height = DataUtils.read_odom_list(self.input_path + "/odom_ground_truth.txt")
+        self.scan_files = DataUtils.list_indexed_files(os.path.join(self.input_path, "scan"), ".ply")
+        if len(self.scan_files) == 0:
+            raise RuntimeError("No indexed scan/*.ply files found for scan reconstruction.")
+
+        N = min(len(self.odom_list), len(self.scan_files))
+        if N == 0:
+            raise RuntimeError("No synchronized scan and odom samples found.")
+        self.start_id = 0 if self.is_max_iter else start_id
+        self.end_id = N if self.is_max_iter else min(start_id + iters, N)
+
+        self.is_constructed = False
+        print("Ready to read de-skewed scan data.")
+
+    def scan_cloud_reconstruction(self, is_output=False):
+        point_blocks = []
+        T_base_scan = DataUtils.extrinsic_to_matrix(self.scanR, self.scanT) if self.scanR is not None else None
+
+        print("start scan reconstruction with transform mode: %s" % self.transform_mode)
+        for idx in range(self.start_id, self.end_id):
+            if is_output:
+                print("Extracting points from scan: ", idx)
+
+            pcd = DataUtils.load_point_cloud(self.scan_files[idx])
+            points = np.asarray(pcd.points)
+            if points.shape[0] == 0:
+                continue
+
+            points = self._range_filter(points)
+            if points.shape[0] == 0:
+                continue
+
+            if self.transform_mode == "sensor_to_world":
+                if T_base_scan is None:
+                    raise RuntimeError("scan_transform_mode=sensor_to_world requires scan_extrinsic.txt.")
+                T_world_base = DataUtils.pose_to_matrix(self.odom_list[idx])
+                points = DataUtils.transform_points(points, T_world_base.dot(T_base_scan))
+            elif self.transform_mode == "base_to_world":
+                T_world_base = DataUtils.pose_to_matrix(self.odom_list[idx])
+                points = DataUtils.transform_points(points, T_world_base)
+            elif self.transform_mode == "world":
+                # The incoming scan was already registered in the fixed/world frame.
+                pass
+            else:
+                raise RuntimeError("Unsupported scan transform mode: %s" % self.transform_mode)
+
+            point_blocks.append(points)
+
+        if len(point_blocks) == 0:
+            raise RuntimeError("Scan reconstruction produced no points.")
+
+        self.points = np.concatenate(point_blocks, axis=0)
+        print("creating open3d geometry point cloud from de-skewed scans...")
+        self.pcd = CloudUtils.create_open3d_cloud(self.points, self.voxel_size)
+        self.is_constructed = True
+        print("scan construction completed.")
+
+    def show_point_cloud(self):
+        if not self.is_constructed:
+            print("no reconstructed cloud")
+        o3d.visualization.draw_geometries([self.pcd])
+
+    def save_reconstructed_data(self, image_type="depth"):
+        if not self.is_constructed:
+            print("save points failed, no reconstructed cloud!")
+            return
+
+        print("save scan-based output files to: " + self.out_path)
+        DataUtils.prepare_output_folders(self.out_path, image_type)
+
+        self._copy_depth_images_for_training(image_type)
+        DataUtils.save_odom_list(self.out_path, self.odom_list, self.start_id, self.end_id - self.start_id)
+        self._copy_or_save_camera_params()
+        DataUtils.copy_if_exists(os.path.join(self.input_path, "scan_extrinsic.txt"),
+                                 os.path.join(self.out_path, "scan_extrinsic.txt"))
+        DataUtils.save_point_cloud(self.out_path, self.pcd)
+        print("saved scan-based cost map data.")
+
+    @property
+    def avg_height(self):
+        return self._avg_height
+
+    def _initialize_paths(self, input_path, out_path):
+        self.input_path = input_path
+        self.out_path = out_path
+
+    def _initialize_parameters(self, voxel_size, max_range, is_max_iter, transform_mode):
+        self.voxel_size = voxel_size
+        self.max_range = max_range
+        self.is_max_iter = is_max_iter
+        self.transform_mode = transform_mode
+        if self.transform_mode not in self.VALID_TRANSFORM_MODES:
+            raise ValueError("scan_transform_mode must be one of %s" % (self.VALID_TRANSFORM_MODES,))
+
+    def _read_params(self):
+        self.K = DataUtils.read_intrinsic(self.input_path + "/depth_intrinsic.txt")
+        self.cameraR, self.cameraT = DataUtils.read_extrinsic(self.input_path + "/camera_extrinsic.txt")
+        scan_extrinsic_path = self.input_path + "/scan_extrinsic.txt"
+        if os.path.exists(scan_extrinsic_path):
+            self.scanR, self.scanT = DataUtils.read_extrinsic(scan_extrinsic_path)
+        elif self.transform_mode == "sensor_to_world":
+            raise RuntimeError("scan_transform_mode=sensor_to_world requires scan_extrinsic.txt: %s" % scan_extrinsic_path)
+        else:
+            self.scanR, self.scanT = None, None
+
+    def _range_filter(self, points):
+        if self.max_range is None or self.max_range <= 0:
+            return points
+        ranges = np.linalg.norm(points, axis=1)
+        return points[ranges <= self.max_range]
+
+    def _copy_depth_images_for_training(self, image_type):
+        depth_dir = os.path.join(self.input_path, "depth")
+        if not os.path.isdir(depth_dir):
+            print("No depth folder found; scan cloud saved without training images.")
+            return
+
+        for out_idx, in_idx in enumerate(range(self.start_id, self.end_id)):
+            src = os.path.join(depth_dir, str(in_idx) + ".png")
+            dst = os.path.join(self.out_path, image_type, str(out_idx) + ".png")
+            if os.path.exists(src):
+                shutil.copyfile(src, dst)
+
+    def _copy_or_save_camera_params(self):
+        copied_camera = DataUtils.copy_if_exists(os.path.join(self.input_path, "camera_extrinsic.txt"),
+                                                 os.path.join(self.out_path, "camera_extrinsic.txt"))
+        copied_depth = DataUtils.copy_if_exists(os.path.join(self.input_path, "depth_intrinsic.txt"),
+                                                os.path.join(self.out_path, "depth_intrinsic.txt"))
+        if not copied_camera:
+            DataUtils.save_extrinsic(self.out_path, self.cameraR, self.cameraT)
+        if not copied_depth:
+            DataUtils.save_intrinsic(self.out_path, self.K)
         
         

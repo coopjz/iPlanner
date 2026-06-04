@@ -21,6 +21,14 @@ from torch.utils.data import Dataset, DataLoader
 torch.set_default_dtype(torch.float32)
 
 
+def load_trusted_split(path):
+    """Load locally generated train/test split files across PyTorch versions."""
+    try:
+        return torch.load(path, weights_only=False)
+    except TypeError:
+        return torch.load(path)
+
+
 class MultiEpochsDataLoader(DataLoader):
 
     def __init__(self, *args, **kwargs):
@@ -97,7 +105,7 @@ class PlannerData(Dataset):
         indexfile = os.path.join(img_path, 'split.pt')
         is_generate_split = True;
         if os.path.exists(indexfile):
-            train_index, test_index = torch.load(indexfile)
+            train_index, test_index = load_trusted_split(indexfile)
             if len(train_index)+len(test_index) == N:
                 is_generate_split = False
             else:

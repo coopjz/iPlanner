@@ -10,6 +10,7 @@ import torch
 import random
 import torch.fft
 import collections
+import inspect
 import torchvision
 from torch import nn
 from itertools import repeat
@@ -251,9 +252,13 @@ class EarlyStopScheduler(torch.optim.lr_scheduler.ReduceLROnPlateau):
     def __init__(self, optimizer, mode='min', factor=0.1, patience=10,
                     verbose=False, threshold=1e-4, threshold_mode='rel',
                     cooldown=0, min_lr=0, eps=1e-8):
-        super().__init__(optimizer=optimizer, mode=mode, factor=factor, patience=patience,
-                            threshold=threshold, threshold_mode=threshold_mode,
-                            cooldown=cooldown, min_lr=min_lr, eps=eps, verbose=verbose)
+        kwargs = dict(optimizer=optimizer, mode=mode, factor=factor, patience=patience,
+                      threshold=threshold, threshold_mode=threshold_mode,
+                      cooldown=cooldown, min_lr=min_lr, eps=eps)
+        if 'verbose' in inspect.signature(torch.optim.lr_scheduler.ReduceLROnPlateau).parameters:
+            kwargs['verbose'] = verbose
+        super().__init__(**kwargs)
+        self.verbose = verbose
         self.no_decrease = 0
 
     def step(self, metrics, epoch=None):
@@ -277,6 +282,7 @@ class EarlyStopScheduler(torch.optim.lr_scheduler.ReduceLROnPlateau):
             self.cooldown_counter = self.cooldown
             self.num_bad_epochs = 0
             return self._reduce_lr(epoch)
+        return False
 
     def _reduce_lr(self, epoch):
         for i, param_group in enumerate(self.optimizer.param_groups):
