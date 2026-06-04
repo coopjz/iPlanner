@@ -4,7 +4,7 @@
        loamInterface to expose /state_estimation and /registered_scan from Odin. -->
   <arg name="config" default="data_params_go2_odin" />
   <arg name="env_name" default="go2_odin_001" />
-  <arg name="start_loam_interface" default="false" />
+  <arg name="start_loam_interface" default="true" />
   <arg name="start_camera_info" default="true" />
   <arg name="start_static_tf" default="true" />
   <arg name="sensorOffsetX" default="0.325" />
@@ -38,4 +38,5 @@
     <rosparam command="load" file="$(find iplanner_node)/config/$(arg config).yaml" />
     <param name="env_name" value="$(arg env_name)" />
   </node>
+
 </launch>

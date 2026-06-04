@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ENV_NAME="${ENV_NAME:-go2_odin_001}"
-START_LOAM_INTERFACE="${START_LOAM_INTERFACE:-auto}"
+START_LOAM_INTERFACE="${START_LOAM_INTERFACE:-true}"
 START_CAMERA_INFO="${START_CAMERA_INFO:-true}"
-LOG_DIR="${LOG_DIR:-/tmp/go2_odin_finetune_logs}"
+LOG_DIR="${LOG_DIR:-/home/unitree/dog_nav_stack_demo/iPlanner/logs/go2_odin_data_collection}"
 mkdir -p "$LOG_DIR"
 
 set +u
