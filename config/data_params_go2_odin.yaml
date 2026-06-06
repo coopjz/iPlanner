@@ -1,5 +1,5 @@
 # Odin + Go2 real-robot data collection for iPlanner finetuning.
-main_freq:              2.5
+main_freq:              5
 
 # Odin/iPlanner runtime topics
 depth_topic:            /odin1/depth_img_competetion

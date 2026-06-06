@@ -56,6 +56,8 @@ if __name__ == '__main__':
     robot_height_override = parameters.get('robot_height', None)
     ground_z_override = parameters.get('ground_z', None)
     ground_z_offset = parameters.get('ground_z_offset', None)
+    terrain_ground_height = parameters.get('terrain_ground_height',
+                                           parameters.get('ground_height', 0.25))
     heatmap_overview_items = []
     occupancy_overview_items = []
 
@@ -88,12 +90,14 @@ if __name__ == '__main__':
         print("Average Height: ", avg_height)
         print("TSDF robot height: ", robot_height)
         print("TSDF ground z: ", ground_z)
+        print("TSDF terrain ground height: ", terrain_ground_height)
         if is_visualize:
             reconstructor.show_point_cloud()
 
         # Construct the 2D cost map
         tsdf_creator = TSDF_Creator(out_path, voxel_size=voxel_size, robot_size=robot_size,
-                                    robot_height=robot_height, ground_z=ground_z)
+                                    robot_height=robot_height, ground_z=ground_z,
+                                    ground_height=terrain_ground_height)
         tsdf_creator.read_point_from_file("cloud.ply")
         data, coord, params = tsdf_creator.create_TSDF_map()
         if is_visualize:

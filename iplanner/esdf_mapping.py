@@ -268,11 +268,14 @@ class DataUtils:
         return output_path
 
 class TSDF_Creator:
-    def __init__(self, input_path, voxel_size, robot_height, robot_size, clear_dist=1.0, ground_z=0.0):
-        self.initialize_path_and_properties(input_path, voxel_size, robot_height, robot_size, clear_dist, ground_z)
+    def __init__(self, input_path, voxel_size, robot_height, robot_size,
+                 clear_dist=1.0, ground_z=0.0, ground_height=0.25):
+        self.initialize_path_and_properties(input_path, voxel_size, robot_height, robot_size,
+                                            clear_dist, ground_z, ground_height)
         self.initialize_point_clouds()
 
-    def initialize_path_and_properties(self, input_path, voxel_size, robot_height, robot_size, clear_dist, ground_z):
+    def initialize_path_and_properties(self, input_path, voxel_size, robot_height, robot_size,
+                                       clear_dist, ground_z, ground_height):
         self.input_path = input_path
         self.is_map_ready = False
         self.clear_dist = clear_dist
@@ -280,6 +283,7 @@ class TSDF_Creator:
         self.robot_height = robot_height
         self.robot_size = robot_size
         self.ground_z = ground_z
+        self.ground_height = ground_height
 
     def initialize_point_clouds(self):
         self.obs_pcd = o3d.geometry.PointCloud()
@@ -297,7 +301,7 @@ class TSDF_Creator:
         pcd_load = DataUtils.load_point_cloud(file_path)
         
         print("Running terrain analysis...")
-        obs_p, free_p = self.terrain_analysis(np.asarray(pcd_load.points))
+        obs_p, free_p = self.terrain_analysis(np.asarray(pcd_load.points), self.ground_height)
         self.update_point_cloud(obs_p, free_p, is_downsample=True)
         
         if is_filter:
