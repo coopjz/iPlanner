@@ -10,7 +10,7 @@
   <arg name="start_loam_interface" default="true" />
   <arg name="start_iplanner" default="true" />
   <arg name="start_path_follower" default="true" />
-  <arg name="start_rviz" default="true" />
+  <arg name="start_rviz" default="false" />
 
   <!-- Runtime configuration -->
   <arg name="config" default="go2_odin" />
