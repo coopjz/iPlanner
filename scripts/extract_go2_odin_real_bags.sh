@@ -35,6 +35,23 @@ fi
 if [[ -n "${FRAME_STRIDE:-}" ]]; then
   ARGS+=(--frame-stride "$FRAME_STRIDE")
 fi
+if [[ "${DISABLE_SELF_FILTER:-false}" == "true" ]]; then
+  ARGS+=(--disable-self-filter)
+fi
+for opt in \
+  SELF_FILTER_X_MIN:self-filter-x-min \
+  SELF_FILTER_X_MAX:self-filter-x-max \
+  SELF_FILTER_Y_MIN:self-filter-y-min \
+  SELF_FILTER_Y_MAX:self-filter-y-max \
+  SELF_FILTER_Z_MIN:self-filter-z-min \
+  SELF_FILTER_Z_MAX:self-filter-z-max; do
+  env_name="${opt%%:*}"
+  arg_name="${opt#*:}"
+  value="${!env_name:-}"
+  if [[ -n "$value" ]]; then
+    ARGS+=(--"$arg_name" "$value")
+  fi
+done
 if [[ "${OVERWRITE:-false}" == "true" ]]; then
   ARGS+=(--overwrite)
 fi

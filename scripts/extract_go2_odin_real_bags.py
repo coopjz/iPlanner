@@ -31,6 +31,7 @@ import open3d as o3d
 import rosbag
 import ros_numpy
 from rosbag.bag import ROSBagException, ROSBagFormatException, ROSBagUnindexedException
+from scipy.spatial.transform import Rotation as R
 
 
 DEPTH_TOPIC = "/odin1/depth_img_competetion"
@@ -63,6 +64,17 @@ class ImageTransform:
     target_h: int
     scale_x: float
     scale_y: float
+
+
+@dataclass(frozen=True)
+class SelfFilterBox:
+    enabled: bool
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
+    z_min: float
+    z_max: float
 
 
 def parse_projection_matrix(path: str) -> np.ndarray:
@@ -236,17 +248,34 @@ def ros_image_to_numpy(msg) -> np.ndarray:
     return array
 
 
-def save_cloud_xyz(path: str, msg) -> int:
+def filter_self_points(points: np.ndarray, odom: Sequence[float], self_filter: SelfFilterBox) -> Tuple[np.ndarray, int]:
+    if (not self_filter.enabled) or points.size == 0:
+        return points, 0
+
+    odom_array = np.asarray(odom, dtype=np.float64)
+    rotation = R.from_quat(odom_array[3:7]).as_matrix()
+    translation = odom_array[:3]
+    local = (rotation.T @ (points - translation).T).T
+    in_self_box = (
+        (local[:, 0] >= self_filter.x_min) & (local[:, 0] <= self_filter.x_max) &
+        (local[:, 1] >= self_filter.y_min) & (local[:, 1] <= self_filter.y_max) &
+        (local[:, 2] >= self_filter.z_min) & (local[:, 2] <= self_filter.z_max)
+    )
+    return points[~in_self_box], int(np.count_nonzero(in_self_box))
+
+
+def save_cloud_xyz(path: str, msg, odom: Sequence[float], self_filter: SelfFilterBox) -> Tuple[int, int]:
     points = ros_numpy.point_cloud2.pointcloud2_to_xyz_array(msg, remove_nans=True)
-    if points.size == 0:
-        pcd = o3d.geometry.PointCloud()
-    else:
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points.astype(np.float64, copy=False))
+    points = points.astype(np.float64, copy=False)
+    points, removed_self_points = filter_self_points(points, odom, self_filter)
+
+    pcd = o3d.geometry.PointCloud()
+    if points.size > 0:
+        pcd.points = o3d.utility.Vector3dVector(points)
     ok = o3d.io.write_point_cloud(path, pcd)
     if not ok:
         raise RuntimeError("Open3D failed to write point cloud: %s" % path)
-    return int(points.shape[0])
+    return int(points.shape[0]), removed_self_points
 
 
 def open_bag(path: str):
@@ -352,6 +381,7 @@ def process_selected_messages(
     matches: Sequence[Match],
     odoms: Sequence[Sequence[float]],
     transform: ImageTransform,
+    self_filter: SelfFilterBox,
 ) -> Dict[str, int]:
     cloud_to_samples = defaultdict(list)
     depth_to_samples = defaultdict(list)
@@ -362,8 +392,9 @@ def process_selected_messages(
         if match.color_idx is not None:
             color_to_samples[match.color_idx].append(match.sample_id)
 
-    saved = {"cloud": 0, "depth": 0, "color": 0, "black_color": 0}
+    saved = {"cloud": 0, "depth": 0, "color": 0, "black_color": 0, "removed_self_points": 0}
     cloud_points: Dict[int, int] = {}
+    removed_self_points_by_sample: Dict[int, int] = {}
     color_written = set()
     counters = defaultdict(int)
 
@@ -374,8 +405,14 @@ def process_selected_messages(
             counters[topic] += 1
             if topic == cloud_topic and idx in cloud_to_samples:
                 for sample_id in cloud_to_samples[idx]:
-                    count = save_cloud_xyz(os.path.join(env_path, "scan", "%d.ply" % sample_id), msg)
+                    count, removed_self_points = save_cloud_xyz(
+                        os.path.join(env_path, "scan", "%d.ply" % sample_id),
+                        msg,
+                        odoms[matches[sample_id].odom_idx],
+                        self_filter)
                     cloud_points[sample_id] = count
+                    removed_self_points_by_sample[sample_id] = removed_self_points
+                    saved["removed_self_points"] += removed_self_points
                     saved["cloud"] += 1
             elif topic == DEPTH_TOPIC and idx in depth_to_samples:
                 depth = ros_image_to_numpy(msg)
@@ -405,6 +442,8 @@ def process_selected_messages(
 
     saved["min_cloud_points"] = int(min(cloud_points.values())) if cloud_points else 0
     saved["max_cloud_points"] = int(max(cloud_points.values())) if cloud_points else 0
+    saved["mean_removed_self_points"] = float(np.mean(list(removed_self_points_by_sample.values()))) if removed_self_points_by_sample else 0.0
+    saved["max_removed_self_points"] = int(max(removed_self_points_by_sample.values())) if removed_self_points_by_sample else 0
     return saved
 
 
@@ -469,9 +508,18 @@ def extract_bag(args, bag_path: str, env_name: str, P_raw: np.ndarray) -> Tuple[
     )
     P_scaled = transform_projection(P_raw, transform)
     write_metadata(env_path, P_scaled, args.camera_extrinsic)
+    self_filter = SelfFilterBox(
+        enabled=not args.disable_self_filter,
+        x_min=args.self_filter_x_min,
+        x_max=args.self_filter_x_max,
+        y_min=args.self_filter_y_min,
+        y_max=args.self_filter_y_max,
+        z_min=args.self_filter_z_min,
+        z_max=args.self_filter_z_max,
+    )
 
     try:
-        saved = process_selected_messages(bag_path, env_path, cloud_topic, matches, odoms, transform)
+        saved = process_selected_messages(bag_path, env_path, cloud_topic, matches, odoms, transform, self_filter)
     except Exception as exc:
         report.update({"error": "%s: %s" % (type(exc).__name__, exc)})
         return False, report
@@ -481,6 +529,7 @@ def extract_bag(args, bag_path: str, env_name: str, P_raw: np.ndarray) -> Tuple[
         "saved_counts": saved,
         "image_transform": transform.__dict__,
         "projection_matrix": [float(v) for v in P_scaled.reshape(-1)],
+        "self_filter_box_sensor_frame": self_filter.__dict__,
         "sync_policy": {
             "clock": cloud_topic,
             "odom_topic": ODOM_TOPIC,
@@ -526,6 +575,14 @@ def parse_args(argv: Optional[Sequence[str]] = None):
     parser.add_argument("--color-slop", type=float, default=0.250)
     parser.add_argument("--max-frames", type=int, default=None)
     parser.add_argument("--frame-stride", type=int, default=1)
+    parser.add_argument("--disable-self-filter", action="store_true",
+                        help="Disable head-mounted robot self/near-field point filter.")
+    parser.add_argument("--self-filter-x-min", type=float, default=-0.20)
+    parser.add_argument("--self-filter-x-max", type=float, default=0.85)
+    parser.add_argument("--self-filter-y-min", type=float, default=-0.32)
+    parser.add_argument("--self-filter-y-max", type=float, default=0.32)
+    parser.add_argument("--self-filter-z-min", type=float, default=-0.30)
+    parser.add_argument("--self-filter-z-max", type=float, default=0.35)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--fail-on-bad-bag", action="store_true")
     args = parser.parse_args(argv)
